@@ -1,0 +1,151 @@
+library(stringr)
+library(gtools)
+library(ggplot2)
+library(reshape2)
+library(lda)
+library(arules)
+library(lattice)
+library(dplyr)
+library(arulseVis)
+###data import
+set1<-read.table("제4회 Big Data Competition-분석용데이터-01.고객DEMO.txt",sep=",",header=T)
+set1$HOM_PST_NO<-na.replace(set1$HOM_PST_NO,999) ## 거주지 na =999
+set1<-as.data.frame(lapply(set1,as.factor))
+#set2
+set2<-read.table("제4회 Big Data Competition-분석용데이터-02.쇼핑업종 상품구매.txt",sep=",",header=T)
+#set3
+set3<-read.table("제4회 Big Data Competition-분석용데이터-03.쇼핑외 업종 상품구매.txt",sep=",",header=T)
+#set4
+set4<-readLines("제4회 Big Data Competition-분석용데이터-04.쇼핑업종 상품분류.txt",encoding="UTF-8")
+set4<-str_replace_all(set4,",","\t");write(set4,"set4.txt")
+set4<-read.table("set4.txt",sep="\t",header=T)
+set4<-as.data.frame(lapply(set4,str_replace_all,pattern="\t",replace="/"))
+
+
+## set2 merge
+set2<-cbind(set2,iteminfo=paste0(set2$BIZ_UNIT,"_",set2$PD_S_C))
+set4<-cbind(set4,iteminfo=paste0(set4$BIZ_UNIT,"_",set4$PD_S_C))
+newset2<-merge(set2,set4[,-c(1:2)],by="iteminfo")
+newset2<-cbind(newset2,"ID_DT"=paste0("ID",newset2$ID,"_",newset2$DE_DT))
+
+# 업종별 구분
+newset2_a01<-newset2[newset2$BIZ_UNIT=="A01",]
+newset2_a02<-newset2[newset2$BIZ_UNIT=="A02",]
+newset2_a03<-newset2[newset2$BIZ_UNIT=="A03",]
+newset2_a04<-newset2[newset2$BIZ_UNIT=="A04",]
+newset2_a05<-newset2[newset2$BIZ_UNIT=="A05",]
+
+#업종별 아이디별 이용금액
+
+id.biz.count<-apply(id.biz.count,2,sum)
+id.biz<-group_by(newset2,ID,BIZ_UNIT)
+id.biz.money<-summarise(id.biz,"BUY_AM_SUM"=sum(BUY_AM))
+
+
+
+#######################################################A01
+#######################################################
+k=10
+itemname<-sort(unique(as.character(newset2_a01$PD_S_NM)))
+lda_a01<-ldafunction(newset2_a01,10)
+result_a01<-ldaresult_list(lda_a01,itemname)
+
+
+##theta table
+theta_a01<-result_a01$theta
+rownames(theta_a01)<-sort(unique(newset2_a01$ID))
+
+idx<-c(23,300,1000)
+topic_id<-data.frame(theta_a01[rownames(theta_a01) %in% idx,],client=factor(idx))
+topic_id<-melt(topic_id,variable.name = "topic",id.vars="client")
+ggplot(topic_id,aes(topic,value,fill=topic))+geom_bar(stat = "identity")+coord_flip()+facet_grid(.~client)+guides(fill=F)
+
+# 각 토픽 설명을 위함
+##phi
+topicN<-8
+phi_a01<-result_a01$phi
+phi_topic<-data.frame(value=sort(phi_a01[topicN,],decreasing = T)[1:20])
+ggplot(phi_topic,aes(reorder(rownames(phi_topic),value),value,fill=value))+geom_bar(stat="identity")+coord_flip()
+
+##lift  
+lift_a01<-result_a01$lift
+lift_topic<-data.frame(lift=sort(lift_a01[topicN,],decreasing = T)[1:30])
+ggplot(lift_topic,aes(reorder(rownames(lift_topic),lift),lift,fill=lift))+geom_bar(stat="identity")+coord_flip()
+
+
+##id별 토픽 부여
+id.topic_a01<-ifelse(theta_a01>0.2,1,0)##모든 토픽이 0이 안되는 선에서 0.2로 택함
+
+##토픽별 id information
+t<-id.topic_a01[id.topic_a01[,2]==1,]
+t<-set1[set1$ID %in% rownames(t),];t<-merge(t,id.biz.money[id.biz.money$BIZ_UNIT=="A01",-2],by="ID")
+
+
+
+
+##각 토픽 별 나이대 분포
+id_a01<-rownames(theta_a01)
+id_a01<-set1[set1$ID %in% id_a01,]
+id_a01_AGE<-id_a01$AGE_PRD
+id_a01_AGE<-table(id_a01_AGE)/sum(table(id_a01_AGE))
+id_a01_AGE<-data.frame(id_a01_AGE)
+ggplot(id_a01_AGE,aes(c(0,0,0,0,0),Freq,fill=id_a01_AGE))+geom_bar(stat="identity")
+
+prdtable_a01<-data.frame()
+for (i in 1:k){
+  t<-id.topic_a01[id.topic_a01[,i]==1,]
+  AGE<-set1[set1$ID %in% rownames(t),3]
+  t<-data.frame(AGE,"Topic"=i)
+  prdtable_a01<-rbind(prdtable_a01,t)
+}
+prd<-recast(prdtable_a01,AGE~prdtable_a01$Topic)
+prd<-melt(prd);p<-unlist(tapply(prd$value, prd$variable, function(x) x/sum(x)));prd<-cbind(prd,p)
+ggplot(prd,aes(variable,p,fill=AGE))+geom_bar(stat="identity")
+
+##각 토픽별 성별 분포
+prdtable_a01<-data.frame()
+for (i in 1:k){
+  t<-id.topic_a01[id.topic_a01[,i]==1,]
+  GENDER<-set1[set1$ID %in% rownames(t),2]
+  t<-data.frame(GENDER,"Topic"=i)
+  prdtable_a01<-rbind(prdtable_a01,t)
+}
+prd<-recast(prdtable_a01,GENDER~prdtable_a01$Topic)
+prd<-melt(prd);p<-unlist(tapply(prd$value, prd$variable, function(x) x/sum(x)));prd<-cbind(prd,p)
+ggplot(prd,aes(variable,p,fill=GENDER))+geom_bar(stat="identity")
+
+##각 토픽별 이용금액 boxplot
+##error
+prdtable_a01<-data.frame()
+for (i in 1:k){
+  t<-id.topic_a01[id.topic_a01[,i]==1,]
+  t<-set1[set1$ID %in% rownames(t),];t<-merge(t,id.biz.money[id.biz.money$BIZ_UNIT=="A01",-2],by="ID")
+  money<-newset1[newset1$ID %in% rownames(t),5]
+  t<-data.frame(money,"Topic"=i)
+  prdtable_a01<-rbind(prdtable_a01,t)
+}
+ggplot(prdtable_a01,aes(factor(Topic),money,col=factor(Topic)))+geom_boxplot() + coord_flip()+geom_jitter()
+tapply(prdtable_a01$money, prdtable_a01$Topic, median)
+
+
+
+####################장바구니
+
+table(apply(id.topic_a01,1,sum))#몇개의 토픽이 선택되었는가 빈도
+topic_c1<-apply(id.topic_a01,1,sum)
+#1개의 토픽이 선택된 아이디
+c=1;t=1
+id<-names((id.topic_a01[topic_c1==c,t]==1)[(id.topic_a01[topic_c1==c,t]==1)==TRUE])
+
+ctset11<-newset2_a01[newset2_a01$ID %in% id,]
+
+ctset11
+
+basket_ctset11<-tapply(as.character(ctset11$PD_S_NM),as.character(ctset11$ID),unique)
+basket_ctset11<-sapply(basket_ctset11,list)#236명
+
+ctset11_tran<-as(basket_ctset11,"transactions")
+itemFrequencyPlot(ctset11_tran,topN=30)
+rule<-apriori(ctset11_tran,parameter = list(support=0.15,minlen=2))
+
+

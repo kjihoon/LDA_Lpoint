@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1516590386734.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "AA19F60F",
+    "lastKnownWriteTime" : 1516705761,
+    "last_content_update" : 1516705761390,
+    "path" : "C:/Users/student/Desktop/아비/4_market 업종별2.R",
+    "project_path" : null,
+    "properties" : {
+        "cursorPosition" : "5,35",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 5,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}
